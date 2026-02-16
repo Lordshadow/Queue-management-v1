@@ -18,5 +18,5 @@ public interface ServiceCounterRepository extends JpaRepository<ServiceCounter, 
     List<ServiceCounter> findByStatus(CounterStatus status);
     
     // Find all ACTIVE counters
-    List<ServiceCounter> findByStatusOrderByNameAsc();
+    List<ServiceCounter> findByStatusOrderByNameAsc(CounterStatus status);
 }
