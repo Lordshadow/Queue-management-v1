@@ -1,5 +1,8 @@
 package com.queue.management.service.impl;
 
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
 import com.queue.management.entity.CounterStaff;
 import com.queue.management.entity.Student;
 import com.queue.management.enums.CounterName;
@@ -8,10 +11,9 @@ import com.queue.management.repository.CounterStaffRepository;
 import com.queue.management.repository.StudentRepository;
 import com.queue.management.security.JwtTokenProvider;
 import com.queue.management.service.AuthService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
@@ -109,6 +111,13 @@ public class AuthServiceImpl implements AuthService {
                 .orElseThrow(() -> new RuntimeException(
                     "Staff not found with ID: " + staffId
                 ));
+                // DEBUG: Print password details
+    log.info("=== DEBUG LOGIN ===");
+    log.info("Input password: {}", password);
+    log.info("Stored hash: {}", staff.getPassword());
+    log.info("Match result: {}", passwordEncoder.matches(password, staff.getPassword()));
+    log.info("===================");
+
 
         // Verify password
         if (!passwordEncoder.matches(password, staff.getPassword())) {
