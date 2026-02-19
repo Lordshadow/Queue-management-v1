@@ -1,5 +1,7 @@
 package com.queue.management.security;
 
+import com.queue.management.enums.CounterName;
+import com.queue.management.enums.UserType;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -42,6 +44,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 // Step 4: Load user details from database
                 UserDetails userDetails = userDetailsService
                         .loadUserByUsername(username);
+
+                // Step 4b: For counter staff, copy assignedCounter from JWT
+                if (userDetails instanceof SecurityUser securityUser
+                        && securityUser.getUserType() == UserType.COUNTER_STAFF) {
+                    CounterName assignedCounter =
+                            jwtTokenProvider.getAssignedCounterFromToken(token);
+                    userDetails = new SecurityUser(
+                            securityUser.getUsername(),
+                            securityUser.getPassword(),
+                            securityUser.getUserType(),
+                            securityUser.getName(),
+                            assignedCounter
+                    );
+                }
 
                 // Step 5: Create authentication object
                 UsernamePasswordAuthenticationToken authentication =
