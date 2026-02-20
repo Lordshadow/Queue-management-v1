@@ -17,12 +17,14 @@ import com.queue.management.repository.TokenRepository;
 import com.queue.management.service.StatisticsService;
 import com.queue.management.service.TokenService;
 import com.queue.management.service.ValidationService;
+import com.queue.management.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 
@@ -38,6 +40,7 @@ public class TokenServiceImpl implements TokenService {
     private final QueueRotationStateRepository queueRotationStateRepository;
     private final ValidationService validationService;
     private final StatisticsService statisticsService;
+    private final NotificationService notificationService;
 
     @Override
     @Transactional
@@ -103,6 +106,16 @@ public class TokenServiceImpl implements TokenService {
 
         log.info("Token generated: {} for student: {}", tokenCode, rollNumber);
 
+        // Notify queue subscribers that a new token was added
+        notificationService.notifyQueueUpdate(
+            tokenCode,
+            selectedCounter,
+            TokenStatus.WAITING,
+            countWaiting(counter),
+            currentlyServing(counter),
+            "New token " + tokenCode + " added to queue"
+        );
+
         // Step 11: Return response
         return buildTokenResponse(token, rollNumber);
     }
@@ -110,11 +123,13 @@ public class TokenServiceImpl implements TokenService {
     @Override
     public TokenResponse getMyToken(String rollNumber) {
 
+        // Include RESCHEDULED so students can see their token even after it was moved to tomorrow
         Token token = tokenRepository
-            .findByStudent_RollNumberAndServiceDate(rollNumber, LocalDate.now())
-            .orElseThrow(() -> new RuntimeException(
-                "No token found for today!"
-            ));
+            .findTopByStudent_RollNumberAndStatusInOrderByCreatedAtDesc(
+                rollNumber,
+                EnumSet.of(TokenStatus.WAITING, TokenStatus.SERVING, TokenStatus.RESCHEDULED)
+            )
+            .orElseThrow(() -> new RuntimeException("No active token found!"));
 
         return buildTokenResponse(token, rollNumber);
     }
@@ -124,17 +139,12 @@ public class TokenServiceImpl implements TokenService {
     public void cancelToken(String rollNumber) {
 
         Token token = tokenRepository
-            .findByStudent_RollNumberAndServiceDate(rollNumber, LocalDate.now())
+            .findByStudent_RollNumberAndStatusAndServiceDate(
+                rollNumber, TokenStatus.WAITING, LocalDate.now()
+            )
             .orElseThrow(() -> new RuntimeException(
-                "No active token found!"
+                "No waiting token found to cancel!"
             ));
-
-        // Can only cancel WAITING tokens
-        if (token.getStatus() != TokenStatus.WAITING) {
-            throw new RuntimeException(
-                "Cannot cancel token with status: " + token.getStatus()
-            );
-        }
 
         // Mark as DROPPED
         token.setStatus(TokenStatus.DROPPED);
@@ -142,6 +152,16 @@ public class TokenServiceImpl implements TokenService {
 
         log.info("Token cancelled: {} by student: {}",
             token.getTokenCode(), rollNumber);
+
+        // Notify that a token left the queue
+        notificationService.notifyQueueUpdate(
+            token.getTokenCode(),
+            token.getCounter().getName(),
+            TokenStatus.DROPPED,
+            countWaiting(token.getCounter()),
+            currentlyServing(token.getCounter()),
+            "Token " + token.getTokenCode() + " was cancelled"
+        );
     }
 
     @Override
@@ -160,10 +180,10 @@ public class TokenServiceImpl implements TokenService {
             );
         }
 
-        // Find next WAITING token
+        // Find next WAITING token for today
         List<Token> waitingTokens = tokenRepository
-            .findByCounterAndStatusOrderByTokenNumberAsc(
-                counter, TokenStatus.WAITING
+            .findByCounterAndStatusAndServiceDateOrderByTokenNumberAsc(
+                counter, TokenStatus.WAITING, LocalDate.now()
             );
 
         if (waitingTokens.isEmpty()) {
@@ -182,6 +202,16 @@ public class TokenServiceImpl implements TokenService {
 
         log.info("Calling next token: {}", nextToken.getTokenCode());
 
+        // Notify: counter is now serving this token
+        notificationService.notifyQueueUpdate(
+            nextToken.getTokenCode(),
+            counterName,
+            TokenStatus.SERVING,
+            countWaiting(counter),
+            nextToken.getTokenCode(),
+            "Counter " + counterName + " is now serving " + nextToken.getTokenCode()
+        );
+
         return buildTokenResponse(nextToken, null);
     }
 
@@ -195,7 +225,7 @@ public class TokenServiceImpl implements TokenService {
             .orElseThrow(() -> new RuntimeException("Counter not found!"));
 
         Token servingToken = tokenRepository
-            .findByCounterAndStatus(counter, TokenStatus.SERVING)
+            .findTopByCounterAndStatusAndServiceDateOrderByServedAtDesc(counter, TokenStatus.SERVING, LocalDate.now())
             .orElseThrow(() -> new RuntimeException(
                 "No token currently being served!"
             ));
@@ -206,6 +236,16 @@ public class TokenServiceImpl implements TokenService {
         tokenRepository.save(servingToken);
 
         log.info("Token completed: {}", servingToken.getTokenCode());
+
+        // Notify: counter finished serving, ready for next
+        notificationService.notifyQueueUpdate(
+            servingToken.getTokenCode(),
+            counterName,
+            TokenStatus.COMPLETED,
+            countWaiting(counter),
+            null,
+            "Token " + servingToken.getTokenCode() + " completed at Counter " + counterName
+        );
 
         return buildTokenResponse(servingToken, null);
     }
@@ -220,7 +260,7 @@ public class TokenServiceImpl implements TokenService {
             .orElseThrow(() -> new RuntimeException("Counter not found!"));
 
         Token servingToken = tokenRepository
-            .findByCounterAndStatus(counter, TokenStatus.SERVING)
+            .findTopByCounterAndStatusAndServiceDateOrderByServedAtDesc(counter, TokenStatus.SERVING, LocalDate.now())
             .orElseThrow(() -> new RuntimeException(
                 "No token currently being served!"
             ));
@@ -231,25 +271,37 @@ public class TokenServiceImpl implements TokenService {
 
         log.info("Token dropped: {}", servingToken.getTokenCode());
 
+        // Notify: token was dropped (student didn't show up)
+        notificationService.notifyQueueUpdate(
+            servingToken.getTokenCode(),
+            counterName,
+            TokenStatus.DROPPED,
+            countWaiting(counter),
+            null,
+            "Token " + servingToken.getTokenCode() + " dropped at Counter " + counterName
+        );
+
         return buildTokenResponse(servingToken, null);
     }
 
     @Override
     public int getQueuePosition(String rollNumber) {
 
-        // Find student's token
+        // Find student's WAITING token for today
         Token myToken = tokenRepository
-            .findByStudent_RollNumberAndServiceDate(rollNumber, LocalDate.now())
+            .findByStudent_RollNumberAndStatusAndServiceDate(
+                rollNumber, TokenStatus.WAITING, LocalDate.now()
+            )
             .orElse(null);
 
-        if (myToken == null || myToken.getStatus() != TokenStatus.WAITING) {
+        if (myToken == null) {
             return 0;
         }
 
-        // Count tokens ahead (lower number = ahead in queue)
+        // Count tokens ahead (lower number = ahead in queue) for today only
         List<Token> waitingTokens = tokenRepository
-            .findByCounterAndStatusOrderByTokenNumberAsc(
-                myToken.getCounter(), TokenStatus.WAITING
+            .findByCounterAndStatusAndServiceDateOrderByTokenNumberAsc(
+                myToken.getCounter(), TokenStatus.WAITING, LocalDate.now()
             );
 
         int position = 0;
@@ -345,9 +397,22 @@ public class TokenServiceImpl implements TokenService {
         return nextNumber;
     }
 
+    // Count WAITING tokens at a counter for today (used for notifications)
+    private int countWaiting(ServiceCounter counter) {
+        return tokenRepository.findByCounterAndStatusAndServiceDateOrderByTokenNumberAsc(
+            counter, TokenStatus.WAITING, LocalDate.now()
+        ).size();
+    }
+
+    // Get the token code currently being served at a counter (null if idle)
+    private String currentlyServing(ServiceCounter counter) {
+        return tokenRepository.findTopByCounterAndStatusAndServiceDateOrderByServedAtDesc(
+            counter, TokenStatus.SERVING, LocalDate.now()
+        ).map(Token::getTokenCode).orElse(null);
+    }
+
     // Build TokenResponse from Token entity
     private TokenResponse buildTokenResponse(Token token, String rollNumber) {
-
         int position = 0;
         int estimatedWaitTime = 0;
 

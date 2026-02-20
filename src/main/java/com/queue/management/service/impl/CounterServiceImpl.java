@@ -163,7 +163,7 @@ public class CounterServiceImpl implements CounterService {
 
         // Get currently serving token
         Optional<Token> servingToken = tokenRepository
-            .findByCounterAndStatus(counter, TokenStatus.SERVING);
+            .findTopByCounterAndStatusAndServiceDateOrderByServedAtDesc(counter, TokenStatus.SERVING, today);
 
         // Count tokens by status
         List<Token> allTokensToday = tokenRepository
@@ -219,8 +219,8 @@ public class CounterServiceImpl implements CounterService {
 
         // Get all WAITING tokens for this counter today
         List<Token> waitingTokens = tokenRepository
-            .findByCounterAndStatusOrderByTokenNumberAsc(
-                counter, TokenStatus.WAITING
+            .findByCounterAndStatusAndServiceDateOrderByTokenNumberAsc(
+                counter, TokenStatus.WAITING, today
             );
 
         // Reschedule each token
@@ -245,11 +245,12 @@ public class CounterServiceImpl implements CounterService {
     public void stopAndExpire(CounterName counterName) {
 
         ServiceCounter counter = getCounter(counterName);
+        LocalDate today = LocalDate.now();
 
         // Get all WAITING tokens for this counter today
         List<Token> waitingTokens = tokenRepository
-            .findByCounterAndStatusOrderByTokenNumberAsc(
-                counter, TokenStatus.WAITING
+            .findByCounterAndStatusAndServiceDateOrderByTokenNumberAsc(
+                counter, TokenStatus.WAITING, today
             );
 
         // Drop all waiting tokens

@@ -1,7 +1,6 @@
 package com.queue.management.service.impl;
 
 import com.queue.management.entity.ServiceCounter;
-import com.queue.management.entity.Token;
 import com.queue.management.enums.CounterName;
 import com.queue.management.enums.CounterStatus;
 import com.queue.management.enums.TokenStatus;
@@ -12,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.EnumSet;
 import java.util.Optional;
 
 @Service
@@ -59,20 +59,14 @@ public class ValidationServiceImpl implements ValidationService {
             return false;
         }
 
-        // Check if student already has active token today
-        Optional<Token> existingToken = tokenRepository
-            .findByStudent_RollNumberAndServiceDate(rollNumber, LocalDate.now());
+        // Block if student already has a WAITING or SERVING token today
+        boolean hasActiveToken = tokenRepository.existsByStudent_RollNumberAndStatusInAndServiceDate(
+            rollNumber,
+            EnumSet.of(TokenStatus.WAITING, TokenStatus.SERVING),
+            LocalDate.now()
+        );
 
-        if (existingToken.isPresent()) {
-            TokenStatus status = existingToken.get().getStatus();
-
-            // Block if token is WAITING or SERVING
-            if (status == TokenStatus.WAITING || status == TokenStatus.SERVING) {
-                return false;
-            }
-        }
-
-        return true;
+        return !hasActiveToken;
     }
 
     @Override
