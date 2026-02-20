@@ -48,7 +48,7 @@ public class ValidationServiceImpl implements ValidationService {
     @Override
     public boolean isBreakTime() {
         LocalTime now = LocalTime.now();
-        return now.isAfter(BREAK_START) && now.isBefore(BREAK_END);
+        return !now.isBefore(BREAK_START) && !now.isAfter(BREAK_END);
     }
 
     @Override

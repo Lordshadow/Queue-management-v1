@@ -10,7 +10,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "tokens")
+@Table(name = "tokens",
+    uniqueConstraints = @UniqueConstraint(
+        columnNames = {"counter_id", "service_date", "token_number"}
+    ))
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -32,7 +35,7 @@ public class Token {
     @Column(name = "token_number", nullable = false)
     private Integer tokenNumber;
     
-    @Column(name = "token_code", unique = true, nullable = false, length = 10)
+    @Column(name = "token_code", nullable = false, length = 10)
     private String tokenCode;
     
     @Enumerated(EnumType.STRING)

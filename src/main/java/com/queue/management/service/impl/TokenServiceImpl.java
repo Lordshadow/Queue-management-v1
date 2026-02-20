@@ -227,7 +227,6 @@ public class TokenServiceImpl implements TokenService {
 
         // Mark as DROPPED
         servingToken.setStatus(TokenStatus.DROPPED);
-        servingToken.setCompletedAt(LocalDateTime.now());
         tokenRepository.save(servingToken);
 
         log.info("Token dropped: {}", servingToken.getTokenCode());

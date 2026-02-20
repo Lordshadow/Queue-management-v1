@@ -9,7 +9,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -102,12 +101,4 @@ public class AuthController {
             ApiResponse.success("API is working!", "Hello from Queue Management System!")
         );
     }
-
-    // Temporary endpoint to generate password hash
-@GetMapping("/generate-hash")
-public ResponseEntity<String> generateHash(@RequestParam String password) {
-    BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
-    String hash = encoder.encode(password);
-    return ResponseEntity.ok("Hash for '" + password + "': " + hash);
-}
 }

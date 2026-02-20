@@ -228,6 +228,7 @@ public class CounterServiceImpl implements CounterService {
             token.setStatus(TokenStatus.RESCHEDULED);
             token.setIsRescheduled(true);
             token.setOriginalServiceDate(today);
+            token.setServiceDate(tomorrow);
             tokenRepository.save(token);
         }
 
