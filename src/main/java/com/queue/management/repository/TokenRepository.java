@@ -46,6 +46,9 @@ public interface TokenRepository extends JpaRepository<Token, Long> {
     boolean existsByStudent_RollNumberAndStatusInAndServiceDate(
             String rollNumber, Collection<TokenStatus> statuses, LocalDate serviceDate);
 
+    // Find token history for a student — all tokens ordered newest first
+    List<Token> findByStudent_RollNumberOrderByServiceDateDescCreatedAtDesc(String rollNumber);
+
     // Find last 10 completed tokens for average time calculation
     @Query("SELECT t FROM Token t WHERE t.counter = :counter " +
            "AND t.status = 'COMPLETED' " +

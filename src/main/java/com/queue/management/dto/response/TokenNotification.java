@@ -1,6 +1,7 @@
 package com.queue.management.dto.response;
 
 import com.queue.management.enums.CounterName;
+import com.queue.management.enums.NotificationType;
 import com.queue.management.enums.TokenStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -13,6 +14,10 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class TokenNotification {
+
+    // Type of notification for frontend routing
+    @Builder.Default
+    private NotificationType type = NotificationType.QUEUE_UPDATE;
 
     // Which token this event is about (e.g., "A-007")
     private String tokenCode;
@@ -29,7 +34,10 @@ public class TokenNotification {
     // Token code currently being served (null if idle)
     private String currentlyServing;
 
-    // Human-readable description (e.g., "Counter A is now serving A-007")
+    // Student's current position in queue (0 = next to be called)
+    private Integer yourPosition;
+
+    // Human-readable description
     private String message;
 
     @Builder.Default

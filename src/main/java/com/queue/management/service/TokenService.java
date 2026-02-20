@@ -1,33 +1,33 @@
 package com.queue.management.service;
 
+import com.queue.management.dto.response.TokenHistoryResponse;
 import com.queue.management.dto.response.TokenResponse;
 import com.queue.management.enums.CounterName;
+import java.util.List;
 
 public interface TokenService {
 
     // Generate a new token for student
-    // Returns token details
     TokenResponse generateToken(String rollNumber);
 
-    // Get student's current token for today
+    // Get student's current active token (WAITING, SERVING, or RESCHEDULED)
     TokenResponse getMyToken(String rollNumber);
 
-    // Cancel/drop student's token
+    // Cancel student's WAITING or SERVING token
     void cancelToken(String rollNumber);
 
     // Call next WAITING token for a counter
-    // Called by counter staff
     TokenResponse callNextToken(CounterName counterName);
 
-    // Mark current token as COMPLETED
-    // Called by counter staff
+    // Mark current token as COMPLETED (auto-calls next)
     TokenResponse completeToken(CounterName counterName);
 
-    // Mark current token as DROPPED
-    // Called by counter staff
+    // Mark current token as DROPPED (auto-calls next)
     TokenResponse dropToken(CounterName counterName);
 
     // Get position of student in queue
-    // Returns how many tokens are ahead
     int getQueuePosition(String rollNumber);
+
+    // Get full token history for a student (all past tokens, newest first)
+    List<TokenHistoryResponse> getTokenHistory(String rollNumber);
 }

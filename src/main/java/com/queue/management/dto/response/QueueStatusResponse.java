@@ -16,11 +16,20 @@ public class QueueStatusResponse {
     // Counter name (A or B)
     private CounterName counterName;
 
-    // Counter status (ACTIVE, ON_BREAK, etc.)
+    // Counter status (ACTIVE, ON_BREAK, CLOSED, etc.)
     private CounterStatus counterStatus;
 
     // Currently serving token code (e.g., "A-033")
     private String currentlyServing;
+
+    // Roll number of the student currently being served
+    private String currentStudentRollNumber;
+
+    // Next token code to be called (e.g., "A-034")
+    private String nextTokenCode;
+
+    // Roll number of the student who holds the next token
+    private String nextStudentRollNumber;
 
     // How many tokens are WAITING
     private Integer waitingCount;
@@ -52,6 +61,6 @@ public class QueueStatusResponse {
     // Break reason (if on break)
     private String breakReason;
 
-    // Estimated break end time (if on break)
+    // Estimated break duration in minutes (if on break)
     private Integer estimatedBreakDuration;
 }

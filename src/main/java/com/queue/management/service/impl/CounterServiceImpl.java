@@ -1,21 +1,27 @@
 package com.queue.management.service.impl;
 
 import com.queue.management.dto.response.QueueStatusResponse;
+import com.queue.management.dto.response.TokenNotification;
 import com.queue.management.entity.CounterBreakLog;
+import com.queue.management.entity.DailyCounterState;
 import com.queue.management.entity.ServiceCounter;
 import com.queue.management.entity.Token;
 import com.queue.management.enums.CounterName;
 import com.queue.management.enums.CounterStatus;
+import com.queue.management.enums.NotificationType;
 import com.queue.management.enums.TokenStatus;
 import com.queue.management.repository.CounterBreakLogRepository;
+import com.queue.management.repository.DailyCounterStateRepository;
 import com.queue.management.repository.ServiceCounterRepository;
 import com.queue.management.repository.TokenRepository;
 import com.queue.management.service.CounterService;
+import com.queue.management.service.NotificationService;
 import com.queue.management.service.StatisticsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.Comparator;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -31,32 +37,26 @@ public class CounterServiceImpl implements CounterService {
     private final ServiceCounterRepository counterRepository;
     private final TokenRepository tokenRepository;
     private final CounterBreakLogRepository breakLogRepository;
+    private final DailyCounterStateRepository dailyCounterStateRepository;
     private final StatisticsService statisticsService;
+    private final NotificationService notificationService;
 
     @Override
     @Transactional
-    public void startBreak(CounterName counterName,
-                          String reason,
-                          Integer estimatedDuration) {
+    public void startBreak(CounterName counterName, String reason, Integer estimatedDuration) {
 
-        // Get counter
         ServiceCounter counter = getCounter(counterName);
 
-        // Check if already on break
         if (counter.getStatus() == CounterStatus.ON_BREAK) {
-            throw new RuntimeException(
-                "Counter " + counterName + " is already on break!"
-            );
+            throw new RuntimeException("Counter " + counterName + " is already on break!");
         }
 
-        // Update counter status
         counter.setStatus(CounterStatus.ON_BREAK);
         counter.setBreakStartedAt(LocalDateTime.now());
         counter.setBreakReason(reason);
         counter.setEstimatedBreakDuration(estimatedDuration);
         counterRepository.save(counter);
 
-        // Create break log entry
         CounterBreakLog breakLog = CounterBreakLog.builder()
             .counter(counter)
             .breakStart(LocalDateTime.now())
@@ -66,39 +66,63 @@ public class CounterServiceImpl implements CounterService {
         breakLogRepository.save(breakLog);
 
         log.info("Counter {} started break. Reason: {}", counterName, reason);
+
+        // Calculate estimated resume time
+        LocalDateTime estimatedResume = LocalDateTime.now().plusMinutes(
+            estimatedDuration != null ? estimatedDuration : 15
+        );
+        String resumeTime = estimatedResume.toLocalTime().toString().substring(0, 5);
+
+        // Broadcast break notification to all subscribers
+        notificationService.notifyQueueUpdate(
+            null, counterName, null,
+            countWaiting(counter, LocalDate.now()),
+            null,
+            "Counter " + counterName + " is now on break. Resumes at " + resumeTime
+        );
+
+        // Send personal COUNTER_BREAK notification to all waiting students
+        List<Token> waitingTokens = tokenRepository
+            .findByCounterAndStatusAndServiceDateOrderByTokenNumberAsc(
+                counter, TokenStatus.WAITING, LocalDate.now()
+            );
+
+        for (Token token : waitingTokens) {
+            notificationService.notifyStudent(
+                token.getStudent().getRollNumber(),
+                TokenNotification.builder()
+                    .type(NotificationType.COUNTER_BREAK)
+                    .tokenCode(token.getTokenCode())
+                    .counterName(counterName)
+                    .status(TokenStatus.WAITING)
+                    .waitingCount(waitingTokens.size())
+                    .message("Counter " + counterName + " is now on break. Resumes at " + resumeTime)
+                    .build()
+            );
+        }
     }
 
     @Override
     @Transactional
     public void endBreak(CounterName counterName) {
 
-        // Get counter
         ServiceCounter counter = getCounter(counterName);
 
-        // Check if actually on break
         if (counter.getStatus() != CounterStatus.ON_BREAK) {
-            throw new RuntimeException(
-                "Counter " + counterName + " is not on break!"
-            );
+            throw new RuntimeException("Counter " + counterName + " is not on break!");
         }
 
-        // Calculate actual break duration
         LocalDateTime breakStart = counter.getBreakStartedAt();
         LocalDateTime breakEnd = LocalDateTime.now();
-        int actualDuration = (int) Duration.between(breakStart, breakEnd)
-            .toMinutes();
+        int actualDuration = (int) Duration.between(breakStart, breakEnd).toMinutes();
 
-        // Update counter status back to ACTIVE
         counter.setStatus(CounterStatus.ACTIVE);
         counter.setBreakStartedAt(null);
         counter.setBreakReason(null);
         counter.setEstimatedBreakDuration(null);
         counterRepository.save(counter);
 
-        // Update break log
-        List<CounterBreakLog> activeLogs = breakLogRepository
-            .findByCounterAndBreakEndIsNull(counter);
-
+        List<CounterBreakLog> activeLogs = breakLogRepository.findByCounterAndBreakEndIsNull(counter);
         if (!activeLogs.isEmpty()) {
             CounterBreakLog breakLog = activeLogs.get(0);
             breakLog.setBreakEnd(breakEnd);
@@ -106,52 +130,64 @@ public class CounterServiceImpl implements CounterService {
             breakLogRepository.save(breakLog);
         }
 
-        log.info("Counter {} ended break. Duration: {} minutes",
-            counterName, actualDuration);
+        log.info("Counter {} ended break. Duration: {} minutes", counterName, actualDuration);
+
+        // Broadcast resume notification
+        notificationService.notifyQueueUpdate(
+            null, counterName, null,
+            countWaiting(counter, LocalDate.now()),
+            null,
+            "Counter " + counterName + " has resumed service"
+        );
+
+        // Send personal COUNTER_RESUME to all waiting students
+        List<Token> waitingTokens = tokenRepository
+            .findByCounterAndStatusAndServiceDateOrderByTokenNumberAsc(
+                counter, TokenStatus.WAITING, LocalDate.now()
+            );
+
+        for (Token token : waitingTokens) {
+            notificationService.notifyStudent(
+                token.getStudent().getRollNumber(),
+                TokenNotification.builder()
+                    .type(NotificationType.COUNTER_RESUME)
+                    .tokenCode(token.getTokenCode())
+                    .counterName(counterName)
+                    .status(TokenStatus.WAITING)
+                    .waitingCount(waitingTokens.size())
+                    .message("Counter " + counterName + " has resumed service")
+                    .build()
+            );
+        }
     }
 
     @Override
     @Transactional
-    public void updateCounterStatus(CounterName counterName,
-                                   CounterStatus newStatus) {
-
+    public void updateCounterStatus(CounterName counterName, CounterStatus newStatus) {
         ServiceCounter counter = getCounter(counterName);
         counter.setStatus(newStatus);
         counterRepository.save(counter);
-
         log.info("Counter {} status updated to: {}", counterName, newStatus);
     }
 
     @Override
     @Transactional
-    public void updateDailyLimit(CounterName counterName,
-                                Integer newLimit) {
-
-        // Validate limit
+    public void updateDailyLimit(CounterName counterName, Integer newLimit) {
         if (newLimit < 1 || newLimit > 200) {
-            throw new RuntimeException(
-                "Daily limit must be between 1 and 200!"
-            );
+            throw new RuntimeException("Daily limit must be between 1 and 200!");
         }
-
         ServiceCounter counter = getCounter(counterName);
         counter.setDailyLimit(newLimit);
         counterRepository.save(counter);
-
-        log.info("Counter {} daily limit updated to: {}",
-            counterName, newLimit);
+        log.info("Counter {} daily limit updated to: {}", counterName, newLimit);
     }
 
     @Override
     public List<QueueStatusResponse> getAllCounterStatus() {
-
         List<QueueStatusResponse> responses = new ArrayList<>();
-
-        // Get status for both counters
         for (CounterName counterName : CounterName.values()) {
             responses.add(getCounterStatus(counterName));
         }
-
         return responses;
     }
 
@@ -161,13 +197,10 @@ public class CounterServiceImpl implements CounterService {
         ServiceCounter counter = getCounter(counterName);
         LocalDate today = LocalDate.now();
 
-        // Get currently serving token
         Optional<Token> servingToken = tokenRepository
             .findTopByCounterAndStatusAndServiceDateOrderByServedAtDesc(counter, TokenStatus.SERVING, today);
 
-        // Count tokens by status
-        List<Token> allTokensToday = tokenRepository
-            .findByCounterAndServiceDate(counter, today);
+        List<Token> allTokensToday = tokenRepository.findByCounterAndServiceDate(counter, today);
 
         int waitingCount = 0;
         int completedCount = 0;
@@ -182,19 +215,23 @@ public class CounterServiceImpl implements CounterService {
             }
         }
 
-        // Get statistics
-        double avgServiceTime = statisticsService
-            .getAverageServiceTime(counterName);
+        // Find next WAITING token for display
+        Token nextWaiting = allTokensToday.stream()
+            .filter(t -> t.getStatus() == TokenStatus.WAITING)
+            .min(Comparator.comparingInt(Token::getTokenNumber))
+            .orElse(null);
+
+        double avgServiceTime = statisticsService.getAverageServiceTime(counterName);
         String trend = statisticsService.getServiceTrend(counterName);
-        int estimatedWaitForNew = statisticsService
-            .getEstimatedWaitTime(counterName, waitingCount + 1);
+        int estimatedWaitForNew = statisticsService.getEstimatedWaitTime(counterName, waitingCount + 1);
 
         return QueueStatusResponse.builder()
             .counterName(counterName)
             .counterStatus(counter.getStatus())
-            .currentlyServing(servingToken
-                .map(Token::getTokenCode)
-                .orElse(null))
+            .currentlyServing(servingToken.map(Token::getTokenCode).orElse(null))
+            .currentStudentRollNumber(servingToken.map(t -> t.getStudent().getRollNumber()).orElse(null))
+            .nextTokenCode(nextWaiting != null ? nextWaiting.getTokenCode() : null)
+            .nextStudentRollNumber(nextWaiting != null ? nextWaiting.getStudent().getRollNumber() : null)
             .waitingCount(waitingCount)
             .completedCount(completedCount)
             .droppedCount(droppedCount)
@@ -217,26 +254,39 @@ public class CounterServiceImpl implements CounterService {
         LocalDate today = LocalDate.now();
         LocalDate tomorrow = today.plusDays(1);
 
-        // Get all WAITING tokens for this counter today
         List<Token> waitingTokens = tokenRepository
             .findByCounterAndStatusAndServiceDateOrderByTokenNumberAsc(
                 counter, TokenStatus.WAITING, today
             );
 
-        // Reschedule each token
+        // Reassign fresh sequential numbers starting from 1
+        int newNumber = 1;
         for (Token token : waitingTokens) {
             token.setStatus(TokenStatus.RESCHEDULED);
             token.setIsRescheduled(true);
             token.setOriginalServiceDate(today);
             token.setServiceDate(tomorrow);
+            token.setTokenNumber(newNumber);
+            token.setTokenCode(counterName.name() + "-" + String.format("%03d", newNumber));
             tokenRepository.save(token);
+            newNumber++;
         }
 
-        // Close the counter
+        // Set tomorrow's DailyCounterState so new tokens continue after the rescheduled ones
+        DailyCounterState tomorrowState = dailyCounterStateRepository
+            .findByCounterAndServiceDate(counter, tomorrow)
+            .orElseGet(() -> DailyCounterState.builder()
+                .counter(counter)
+                .serviceDate(tomorrow)
+                .lastTokenNumber(0)
+                .build());
+        tomorrowState.setLastTokenNumber(waitingTokens.size());
+        dailyCounterStateRepository.save(tomorrowState);
+
         counter.setStatus(CounterStatus.CLOSED);
         counterRepository.save(counter);
 
-        log.info("Counter {} stopped. {} tokens rescheduled to {}",
+        log.info("Counter {} stopped. {} tokens rescheduled to {} with fresh numbers",
             counterName, waitingTokens.size(), tomorrow);
     }
 
@@ -247,32 +297,31 @@ public class CounterServiceImpl implements CounterService {
         ServiceCounter counter = getCounter(counterName);
         LocalDate today = LocalDate.now();
 
-        // Get all WAITING tokens for this counter today
         List<Token> waitingTokens = tokenRepository
             .findByCounterAndStatusAndServiceDateOrderByTokenNumberAsc(
                 counter, TokenStatus.WAITING, today
             );
 
-        // Drop all waiting tokens
         for (Token token : waitingTokens) {
             token.setStatus(TokenStatus.DROPPED);
             tokenRepository.save(token);
         }
 
-        // Close the counter
         counter.setStatus(CounterStatus.CLOSED);
         counterRepository.save(counter);
 
-        log.info("Counter {} stopped. {} tokens expired",
-            counterName, waitingTokens.size());
+        log.info("Counter {} stopped. {} tokens expired", counterName, waitingTokens.size());
     }
 
-    // Helper method to get counter
     private ServiceCounter getCounter(CounterName counterName) {
         return counterRepository
             .findByName(counterName)
-            .orElseThrow(() -> new RuntimeException(
-                "Counter not found: " + counterName
-            ));
+            .orElseThrow(() -> new RuntimeException("Counter not found: " + counterName));
+    }
+
+    private int countWaiting(ServiceCounter counter, LocalDate date) {
+        return tokenRepository.findByCounterAndStatusAndServiceDateOrderByTokenNumberAsc(
+            counter, TokenStatus.WAITING, date
+        ).size();
     }
 }

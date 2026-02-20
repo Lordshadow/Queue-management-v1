@@ -10,6 +10,7 @@ import com.queue.management.enums.UserType;
 import com.queue.management.repository.CounterStaffRepository;
 import com.queue.management.repository.StudentRepository;
 import com.queue.management.security.JwtTokenProvider;
+import com.queue.management.dto.response.ProfileResponse;
 import com.queue.management.service.AuthService;
 
 import lombok.RequiredArgsConstructor;
@@ -193,5 +194,38 @@ public class AuthServiceImpl implements AuthService {
     public boolean emailExists(String email) {
         return studentRepository.existsByEmail(email)
                 || counterStaffRepository.existsByEmail(email);
+    }
+
+    @Override
+    public ProfileResponse getStudentProfile(String rollNumber) {
+        Student student = studentRepository
+                .findByRollNumber(rollNumber)
+                .orElseThrow(() -> new RuntimeException("Student not found!"));
+
+        return ProfileResponse.builder()
+                .rollNumber(student.getRollNumber())
+                .name(student.getName())
+                .email(student.getEmail())
+                .registeredAt(student.getCreatedAt())
+                .updatedAt(student.getUpdatedAt())
+                .build();
+    }
+
+    @Override
+    public void updateStudentProfile(String rollNumber, String name, String email) {
+        Student student = studentRepository
+                .findByRollNumber(rollNumber)
+                .orElseThrow(() -> new RuntimeException("Student not found!"));
+
+        // If email is changing, check it's not taken by another student
+        if (!student.getEmail().equals(email) && studentRepository.existsByEmail(email)) {
+            throw new RuntimeException("Email already in use by another account!");
+        }
+
+        student.setName(name);
+        student.setEmail(email);
+        studentRepository.save(student);
+
+        log.info("Profile updated for student: {}", rollNumber);
     }
 }

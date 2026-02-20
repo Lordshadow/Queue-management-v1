@@ -2,6 +2,7 @@ package com.queue.management.service.impl;
 
 import com.queue.management.dto.response.TokenNotification;
 import com.queue.management.enums.CounterName;
+import com.queue.management.enums.NotificationType;
 import com.queue.management.enums.TokenStatus;
 import com.queue.management.service.NotificationService;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,7 @@ public class NotificationServiceImpl implements NotificationService {
             String message) {
 
         TokenNotification notification = TokenNotification.builder()
+                .type(NotificationType.QUEUE_UPDATE)
                 .tokenCode(tokenCode)
                 .counterName(counterName)
                 .status(newStatus)
@@ -34,10 +36,17 @@ public class NotificationServiceImpl implements NotificationService {
                 .message(message)
                 .build();
 
-        // Broadcast to counter-specific topic
         String destination = "/topic/queue/" + counterName.name();
         messagingTemplate.convertAndSend(destination, notification);
 
-        log.debug("WebSocket notification sent to {}: {}", destination, message);
+        log.debug("Queue notification → {}: {}", destination, message);
+    }
+
+    @Override
+    public void notifyStudent(String rollNumber, TokenNotification notification) {
+        String destination = "/topic/student/" + rollNumber;
+        messagingTemplate.convertAndSend(destination, notification);
+
+        log.debug("Student notification → {}: {}", destination, notification.getMessage());
     }
 }
