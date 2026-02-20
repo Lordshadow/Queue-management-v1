@@ -247,7 +247,3 @@ public class AuthServiceImpl implements AuthService {
         log.info("Profile updated for student: {}", rollNumber);
     }
 }
-# In application.properties or as environment variables:
-MAIL_USERNAME=your-gmail@gmail.com
-MAIL_PASSWORD=your-gmail-app-password   # Google App Password, not your login password
-APP_FRONTEND_URL=http://localhost:3000   # or your deployed frontend URL
