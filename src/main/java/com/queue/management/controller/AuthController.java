@@ -2,6 +2,7 @@ package com.queue.management.controller;
 
 import com.queue.management.dto.request.LoginRequest;
 import com.queue.management.dto.request.RegisterRequest;
+import com.queue.management.dto.request.ResetPasswordRequest;
 import com.queue.management.dto.response.ApiResponse;
 import com.queue.management.dto.response.LoginResponse;
 import com.queue.management.service.AuthService;
@@ -25,13 +26,11 @@ public class AuthController {
     public ResponseEntity<ApiResponse<String>> register(
             @Valid @RequestBody RegisterRequest request) {
 
-        // Check passwords match
         if (!request.getPassword().equals(request.getConfirmPassword())) {
             return ResponseEntity.badRequest()
                 .body(ApiResponse.error("Passwords do not match!"));
         }
 
-        // Register student
         String message = authService.registerStudent(
             request.getRollNumber(),
             request.getName(),
@@ -49,7 +48,6 @@ public class AuthController {
     public ResponseEntity<ApiResponse<LoginResponse>> login(
             @Valid @RequestBody LoginRequest request) {
 
-        // Login and get JWT token
         String token = authService.login(
             request.getIdentifier(),
             request.getPassword(),
@@ -57,7 +55,6 @@ public class AuthController {
             request.getSelectedCounter()
         );
 
-        // Build response
         LoginResponse loginResponse = LoginResponse.builder()
             .token(token)
             .userType(request.getUserType())
@@ -67,9 +64,7 @@ public class AuthController {
             .build();
 
         log.info("User logged in: {}", request.getIdentifier());
-        return ResponseEntity.ok(
-            ApiResponse.success("Login successful!", loginResponse)
-        );
+        return ResponseEntity.ok(ApiResponse.success("Login successful!", loginResponse));
     }
 
     // ─── FORGOT PASSWORD ───────────────────────────────────────────────────
@@ -78,19 +73,35 @@ public class AuthController {
     public ResponseEntity<ApiResponse<String>> forgotPassword(
             @RequestParam String email) {
 
-        // Check email exists
-        if (!authService.emailExists(email)) {
-            return ResponseEntity.badRequest()
-                .body(ApiResponse.error("Email not found!"));
+        // Always return OK to prevent email enumeration (service handles missing emails)
+        try {
+            authService.sendPasswordResetEmail(email);
+        } catch (RuntimeException e) {
+            log.warn("Forgot-password attempt for unknown email: {}", email);
         }
 
-        authService.sendPasswordResetEmail(email);
+        return ResponseEntity.ok(ApiResponse.success(
+            "If an account with that email exists, a reset link has been sent.", null
+        ));
+    }
 
-        return ResponseEntity.ok(
-            ApiResponse.success(
-                "Password reset email sent! Check your inbox.", null
-            )
-        );
+    // ─── RESET PASSWORD ────────────────────────────────────────────────────
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<ApiResponse<String>> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest request) {
+
+        if (!request.getNewPassword().equals(request.getConfirmNewPassword())) {
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Passwords do not match!"));
+        }
+
+        authService.resetPassword(request.getToken(), request.getNewPassword());
+
+        log.info("Password successfully reset via token");
+        return ResponseEntity.ok(ApiResponse.success(
+            "Password reset successfully! You can now log in with your new password.", null
+        ));
     }
 
     // ─── TEST ENDPOINT ─────────────────────────────────────────────────────

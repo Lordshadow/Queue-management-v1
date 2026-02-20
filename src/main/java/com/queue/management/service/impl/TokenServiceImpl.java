@@ -118,29 +118,48 @@ public class TokenServiceImpl implements TokenService {
     @Transactional
     public void cancelToken(String rollNumber) {
         // Allow cancelling WAITING or SERVING tokens (per spec)
-        Token token = tokenRepository
+        Token waitingToken = tokenRepository
             .findByStudent_RollNumberAndStatusAndServiceDate(rollNumber, TokenStatus.WAITING, LocalDate.now())
-            .orElseGet(() ->
-                tokenRepository.findByStudent_RollNumberAndStatusAndServiceDate(
-                    rollNumber, TokenStatus.SERVING, LocalDate.now()
-                ).orElseThrow(() -> new RuntimeException(
+            .orElse(null);
+
+        final boolean wasServing;
+        final Token token;
+        if (waitingToken != null) {
+            token = waitingToken;
+            wasServing = false;
+        } else {
+            token = tokenRepository
+                .findByStudent_RollNumberAndStatusAndServiceDate(rollNumber, TokenStatus.SERVING, LocalDate.now())
+                .orElseThrow(() -> new RuntimeException(
                     "No cancellable token found! Only WAITING or SERVING tokens can be cancelled."
-                ))
-            );
+                ));
+            wasServing = true;
+        }
+
+        ServiceCounter counter = token.getCounter();
+        CounterName counterName = counter.getName();
 
         token.setStatus(TokenStatus.DROPPED);
         tokenRepository.save(token);
 
-        log.info("Token cancelled: {} by student: {}", token.getTokenCode(), rollNumber);
+        log.info("Token cancelled: {} by student: {} (was {})",
+            token.getTokenCode(), rollNumber, wasServing ? "SERVING" : "WAITING");
 
         notificationService.notifyQueueUpdate(
             token.getTokenCode(),
-            token.getCounter().getName(),
+            counterName,
             TokenStatus.DROPPED,
-            countWaiting(token.getCounter()),
-            currentlyServing(token.getCounter()),
+            countWaiting(counter),
+            currentlyServing(counter),
             "Token " + token.getTokenCode() + " was cancelled by student"
         );
+
+        // If the student cancelled while being served, notify waiting students and
+        // auto-call the next token so the counter is not left idle
+        if (wasServing) {
+            sendCompletionAlerts(counter, counterName);
+            autoCallNext(counter, counterName);
+        }
     }
 
     @Override

@@ -103,6 +103,12 @@
         <scope>runtime</scope>
     </dependency>
 
+    <!-- Spring Boot Starter Mail (Email sending) -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-mail</artifactId>
+    </dependency>
+
     <!-- Spring Boot Starter Test (Testing framework) -->
     <dependency>
         <groupId>org.springframework.boot</groupId>
