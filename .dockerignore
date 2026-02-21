@@ -1,0 +1,39 @@
+# Build files
+target/
+.mvn/
+mvnw
+mvnw.cmd
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+*.iml
+*.iws
+*.ipr
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+HELP.md
+FRONTEND_SETUP.md
+
+# Other
+node_modules/
+.env
+.env.example
+*.log
+.gradle/
+build/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.circleci/
