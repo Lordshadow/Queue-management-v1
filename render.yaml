@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: queue-management
+    runtime: java
+    buildCommand: mvn clean package -DskipTests
+    startCommand: java -jar target/queue-management-0.0.1-SNAPSHOT.jar
+    plan: free
+    envVars:
+      - key: SERVER_PORT
+        value: "8080"
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRATION
+        sync: false
+      - key: MAIL_HOST
+        sync: false
+      - key: MAIL_PORT
+        sync: false
+      - key: MAIL_USERNAME
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: APP_FRONTEND_URL
+        sync: false
+      - key: NEXT_PUBLIC_API_BASE_URL
+        sync: false
+      - key: RESET_TOKEN_EXPIRY_HOURS
+        sync: false
+      - key: LOG_LEVEL_SECURITY
+        value: "WARN"
+      - key: LOG_LEVEL_APP
+        value: "INFO"

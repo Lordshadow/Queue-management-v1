@@ -5,7 +5,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>4.0.3</version>
+		<version>4.0.2</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.queue</groupId>
@@ -101,6 +101,13 @@
         <artifactId>jjwt-jackson</artifactId>
         <version>0.12.6</version>
         <scope>runtime</scope>
+    </dependency>
+
+    <!-- DotEnv for loading .env file -->
+    <dependency>
+        <groupId>io.github.cdimascio</groupId>
+        <artifactId>dotenv-java</artifactId>
+        <version>3.0.0</version>
     </dependency>
 
     <!-- Spring Boot Starter Mail (Email sending) -->
